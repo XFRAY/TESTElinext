@@ -1,14 +1,12 @@
 package com.example.testelinext.view.main
 
 import android.app.Application
-import android.util.Log
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.MutableLiveData
-import com.example.testelinext.view.main.data.network.ApiService
-import okhttp3.ResponseBody
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
+import com.example.testelinext.network.ApiService
+import io.reactivex.android.schedulers.AndroidSchedulers
+import io.reactivex.disposables.CompositeDisposable
+import io.reactivex.schedulers.Schedulers
+import io.reactivex.subjects.BehaviorSubject
 import java.util.*
 import kotlin.collections.ArrayList
 
@@ -18,103 +16,121 @@ class MainViewModel(application: Application, private val apiService: ApiService
     companion object {
         private const val DEFAULT_IMAGE_WIDTH = 200
         private const val DEFAULT_IMAGE_HEIGHT = 200
+        private const val DEFAULT_IMAGE_TO_LOAD_COUNT = 140
         const val DEFAULT_SPAN_COUNT = 10
         const val DEFAULT_COLUMN_COUNT = 7
     }
 
-    private var countOfPages = 0
+    private val disposable = CompositeDisposable()
+    private val pageList = ArrayList<Page>()
 
-    val addPageData = MutableLiveData<Page>()
-    val updateItemData = MutableLiveData<Photo>()
-    val listOfPages = ArrayList<Page>()
+    val pageListSubject: BehaviorSubject<List<Page>> = BehaviorSubject.create<List<Page>>()
+    val updateImageSubject: BehaviorSubject<Image> = BehaviorSubject.create<Image>()
 
-    fun addPhoto() {
-        generatePage()
-        createNewPhoto()
-        apiService.getPhoto(DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT)
-            .enqueue(object : Callback<ResponseBody> {
-                override fun onResponse(
-                    call: Call<ResponseBody>,
-                    response: Response<ResponseBody>
-                ) {
-                    val url = response.raw().request().url().toString()
-                    getFirstLoadingPhoto().apply {
-                        state = ItemState.FILLED
-                        this.url = url
-                        updateItemData.value = this
-                    }
-                }
+    fun addNewPhoto() {
+        if (isNeedToCreateNewPage()) createNewPage()
+        onImageStartLoading()
+        disposable.add(
+            apiService.getPhoto(DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT)
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe({
+                    val url = it.raw().request().url().toString()
+                    onImageLoaded(url)
+                }, {
 
-                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                    Log.d("1111", "11111")
-                }
-
-            })
-
+                })
+        )
     }
 
-    private fun getFirstLoadingPhoto(): Photo {
-        return listOfPages.last().getFirstEmptyItem()
-    }
-
-    private fun createNewPhoto(): Photo {
-        return listOfPages.last().getFirstEmptyItem().apply {
-            state = ItemState.LOADING
-            updateItemData.value = this
+    private fun onImageStartLoading() {
+        pageList.last().getFirstEmptyImage()?.run {
+            imageStatus = ImageStatus.LOADING
+            updateImageSubject.onNext(this)
+        }?:run {
+            if (isNeedToCreateNewPage()) createNewPage()
+            onImageStartLoading()
         }
-
     }
 
-    private fun shouldGenerateNewPage(): Boolean {
-        return if (listOfPages.isEmpty())
+    private fun onImageLoaded(url: String) {
+        pageList.forEach {
+            if (it.isContainsImageWithStatus(ImageStatus.LOADING)) {
+                it.findFirstImageWithStatus(ImageStatus.LOADING).apply {
+                    this.url = url
+                    imageStatus = ImageStatus.LOADED
+                    updateImageSubject.onNext(this)
+                    return
+                }
+            }
+        }
+    }
+
+    private fun isNeedToCreateNewPage(): Boolean {
+        return if (pageList.isEmpty())
             true
         else
-            listOfPages.last().isFilled()
+            pageList.last().isFull()
 
     }
 
-    private fun generatePage() {
-        if (shouldGenerateNewPage()) {
-            listOfPages.add(Page(countOfPages).apply {
-                for (i: Int in 0 until maxItemCount) {
-                    listOfItems.add(Photo(countOfPages))
-                }
-            })
-            countOfPages++
-            addPageData.value = listOfPages.last()
+    private fun createNewPage() {
+        pageList.add(Page())
+        pageListSubject.onNext(pageList)
+    }
+
+    fun reloadPhotos() {
+        disposable.clear()
+        pageList.clear()
+        for (i: Int in 0 until DEFAULT_IMAGE_TO_LOAD_COUNT) {
+            addNewPhoto()
         }
     }
 
     data class Page(
-        val pageId: Int,
-        val maxItemCount: Int = DEFAULT_COLUMN_COUNT * DEFAULT_SPAN_COUNT,
-        val listOfItems: ArrayList<Photo> = arrayListOf()
+        val maxImageCount: Int = DEFAULT_COLUMN_COUNT * DEFAULT_SPAN_COUNT,
+        val imageList: ArrayList<Image> = arrayListOf()
     ) {
-        fun isFilled(): Boolean {
-            listOfItems.find { it.state == ItemState.EMPTY }?.let {
+        init {
+            for (i: Int in 0 until maxImageCount) {
+                imageList.add(Image())
+            }
+        }
+
+        fun isFull(): Boolean {
+            imageList.find { it.imageStatus == ImageStatus.EMPTY }?.let {
                 return false
             } ?: return true
         }
 
-        fun getFirstEmptyItem() = listOfItems.first {
-            it.state == ItemState.EMPTY
+        fun isContainsImageWithStatus(status: ImageStatus): Boolean {
+            imageList.find { it.imageStatus == status }?.let {
+                return true
+            } ?: return false
         }
 
-        fun getFirstLoadingPhoto() = listOfItems.first {
-            it.state == ItemState.LOADING
+        fun getFirstEmptyImage() = imageList.firstOrNull {
+            it.imageStatus == ImageStatus.EMPTY
         }
+
+        fun findFirstImageWithStatus(status: ImageStatus) =
+            imageList.first { it.imageStatus == status }
 
     }
 
-    data class Photo(
-        val page: Int,
+    override fun onCleared() {
+        super.onCleared()
+        disposable.clear()
+    }
+
+    data class Image(
         val id: String = UUID.randomUUID().toString(),
         var url: String? = null,
-        var state: ItemState = ItemState.EMPTY
+        var imageStatus: ImageStatus = ImageStatus.EMPTY
     )
 
-    enum class ItemState {
-        EMPTY, LOADING, FILLED
+    enum class ImageStatus {
+        EMPTY, LOADING, LOADED
     }
 }
 

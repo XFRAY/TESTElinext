@@ -1,18 +1,21 @@
 package com.example.testelinext.view.main
 
+import android.graphics.drawable.Drawable
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
-import com.bumptech.glide.request.RequestOptions
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
 import com.example.testelinext.R
 import kotlinx.android.synthetic.main.item_photo.view.*
 
 
 class PhotosAdapter : RecyclerView.Adapter<PhotosAdapter.PhotosHolder>() {
 
-    private val items = ArrayList<MainViewModel.Photo>()
+    private val items = ArrayList<MainViewModel.Image>()
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotosHolder {
         return PhotosHolder(
@@ -24,28 +27,41 @@ class PhotosAdapter : RecyclerView.Adapter<PhotosAdapter.PhotosHolder>() {
         holder.bindItem(items[position])
     }
 
-    fun addItems(newItems: List<MainViewModel.Photo>) {
+    fun updatePages(pages: List<MainViewModel.Page>) {
+        val currentItemCount = itemCount
+        val listOfAllItem = ArrayList<MainViewModel.Image>()
+        pages.forEach {
+            listOfAllItem.addAll(it.imageList)
+        }
+        val newItemsCount = listOfAllItem.size
+        if (itemCount > newItemsCount) {
+            items.clear()
+            items.addAll(listOfAllItem)
+            notifyDataSetChanged()
+            return
+        }
+        val newItems = listOfAllItem.subList(currentItemCount, newItemsCount)
         items.addAll(newItems)
-        notifyItemRangeInserted(items.size - newItems.size, newItems.size)
+        notifyItemRangeInserted(currentItemCount, newItems.size)
     }
 
     override fun getItemCount(): Int {
         return items.size
     }
 
-    fun updateItem(photo: MainViewModel.Photo) {
-        getPhotoById(photo.id)?.run {
-            state = photo.state
-            url = photo.url
+    fun updateItem(image: MainViewModel.Image) {
+        getPhotoById(image.id).run {
+            imageStatus = image.imageStatus
+            url = image.url
             notifyItemChanged(getItemPosition(this))
         }
     }
 
-    private fun getItemPosition(photo: MainViewModel.Photo): Int {
-        return items.indexOf(photo)
+    private fun getItemPosition(image: MainViewModel.Image): Int {
+        return items.indexOf(image)
     }
 
-    private fun getPhotoById(id: String) = items.find {
+    private fun getPhotoById(id: String) = items.first {
         it.id == id
     }
 
@@ -54,13 +70,33 @@ class PhotosAdapter : RecyclerView.Adapter<PhotosAdapter.PhotosHolder>() {
         private val imgPhoto = view.imgPhoto
         private val progressBar = view.progressBar
 
-        fun bindItem(photo: MainViewModel.Photo) {
-            progressBar.visibility = if(photo.state == MainViewModel.ItemState.LOADING) View.VISIBLE else View.GONE
-            if(photo.state == MainViewModel.ItemState.FILLED) {
-                Glide.with(imgPhoto.context)
-                    .load(photo.url)
-                    .apply(RequestOptions.centerCropTransform())
-                    .into(imgPhoto)
+        fun bindItem(image: MainViewModel.Image) {
+            when (image.imageStatus) {
+                MainViewModel.ImageStatus.EMPTY -> {
+                    imgPhoto.setImageDrawable(null)
+                    progressBar.visibility = View.GONE
+                }
+                MainViewModel.ImageStatus.LOADING -> {
+                    imgPhoto.setImageDrawable(null)
+                    progressBar.visibility = View.VISIBLE
+                }
+                MainViewModel.ImageStatus.LOADED -> {
+                    Glide.with(imgPhoto.context)
+                        .load(image.url)
+                        .into(object : CustomTarget<Drawable>() {
+                            override fun onLoadCleared(placeholder: Drawable?) {
+                            }
+
+                            override fun onResourceReady(
+                                resource: Drawable,
+                                transition: Transition<in Drawable>?
+                            ) {
+                                imgPhoto.setImageDrawable(resource)
+                                progressBar.visibility = View.GONE
+                            }
+                        })
+
+                }
             }
         }
     }

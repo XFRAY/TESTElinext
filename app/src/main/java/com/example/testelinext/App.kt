@@ -1,9 +1,8 @@
-package com.example.testelinext.view.main
+package com.example.testelinext
 
 import android.app.Application
-import com.bumptech.glide.Glide
-import com.example.testelinext.view.main.di.networkModule
-import com.example.testelinext.view.main.di.viewModelModule
+import com.example.testelinext.di.networkModule
+import com.example.testelinext.di.viewModelModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 

@@ -1,7 +1,7 @@
-package com.example.testelinext.view.main.data.network
+package com.example.testelinext.network
 
+import io.reactivex.Single
 import okhttp3.ResponseBody
-import retrofit2.Call
 import retrofit2.Response
 import retrofit2.http.GET
 import retrofit2.http.Path
@@ -12,5 +12,5 @@ interface ApiService {
     fun getPhoto(
         @Path("width") width: Int,
         @Path("height") height: Int
-    ): Call<ResponseBody>
+    ): Single<Response<ResponseBody>>
 }
