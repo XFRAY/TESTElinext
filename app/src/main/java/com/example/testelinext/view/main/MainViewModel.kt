@@ -1,17 +1,16 @@
 package com.example.testelinext.view.main
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import com.example.testelinext.network.ApiService
+import androidx.lifecycle.ViewModel
+import com.example.testelinext.data.model.Image
+import com.example.testelinext.data.model.Page
+import com.example.testelinext.data.repository.ImageRepository
+import com.example.testelinext.extensions.addTo
 import io.reactivex.android.schedulers.AndroidSchedulers
 import io.reactivex.disposables.CompositeDisposable
+import io.reactivex.rxjava3.subjects.BehaviorSubject
 import io.reactivex.schedulers.Schedulers
-import io.reactivex.subjects.BehaviorSubject
-import java.util.*
-import kotlin.collections.ArrayList
 
-class MainViewModel(application: Application, private val apiService: ApiService) :
-    AndroidViewModel(application) {
+class MainViewModel(private val imageRepository: ImageRepository) : ViewModel() {
 
     companion object {
         private const val DEFAULT_IMAGE_WIDTH = 200
@@ -19,118 +18,81 @@ class MainViewModel(application: Application, private val apiService: ApiService
         private const val DEFAULT_IMAGE_TO_LOAD_COUNT = 140
         const val DEFAULT_SPAN_COUNT = 10
         const val DEFAULT_COLUMN_COUNT = 7
+        private const val MAX_ITEM_COUNT_PER_PAGE = DEFAULT_COLUMN_COUNT * DEFAULT_SPAN_COUNT
     }
 
     private val disposable = CompositeDisposable()
     private val pageList = ArrayList<Page>()
+    private val imageList = ArrayList<Image>()
 
-    val pageListSubject: BehaviorSubject<List<Page>> = BehaviorSubject.create<List<Page>>()
-    val updateImageSubject: BehaviorSubject<Image> = BehaviorSubject.create<Image>()
+    val imageListSubject: BehaviorSubject<List<Image>> = BehaviorSubject.create<List<Image>>()
 
-    fun addNewPhoto() {
-        if (isNeedToCreateNewPage()) createNewPage()
-        onImageStartLoading()
-        disposable.add(
-            apiService.getPhoto(DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT)
-                .subscribeOn(Schedulers.io())
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe({
-                    val url = it.raw().request().url().toString()
-                    onImageLoaded(url)
-                }, {
-
-                })
-        )
+    fun loadOneImage() {
+        loadImages(1)
     }
 
-    private fun onImageStartLoading() {
-        pageList.last().getFirstEmptyImage()?.run {
-            imageStatus = ImageStatus.LOADING
-            updateImageSubject.onNext(this)
-        }?:run {
-            if (isNeedToCreateNewPage()) createNewPage()
-            onImageStartLoading()
+    private fun loadImages(count: Int) {
+        onImagesStartLoading(count)
+        imageRepository.getRandomImageUrl(DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT)
+            .repeat(count.toLong())
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe({ url ->
+                onImageLoaded(url)
+            }, {
+                it.printStackTrace()
+            }).addTo(disposable)
+    }
+
+    private fun addNewPage() {
+        val page = Page(maxImageCount = MAX_ITEM_COUNT_PER_PAGE)
+        pageList.add(page)
+        imageList.addAll(page.imageList)
+    }
+
+    private fun onImagesStartLoading(count: Int) {
+        if (pageList.isEmpty()) addNewPage()
+        var emptyItemCount = pageList.last().imageCountWithStatus(Image.ImageStatus.EMPTY)
+        for (i: Int in 0 until count) {
+            if (emptyItemCount == 0) {
+                emptyItemCount = MAX_ITEM_COUNT_PER_PAGE
+                addNewPage()
+            }
+            val page = pageList.last()
+            val imageListSize = page.imageList.size
+            val positionFrom = imageListSize - emptyItemCount
+            val positionInList =
+                MAX_ITEM_COUNT_PER_PAGE * pageList.size - MAX_ITEM_COUNT_PER_PAGE + positionFrom
+            val image = page.imageList[positionFrom].copy(imageStatus = Image.ImageStatus.LOADING)
+            page.imageList[positionFrom] = image
+            imageList[positionInList] = image
+            emptyItemCount--
         }
+        imageListSubject.onNext(imageList)
     }
 
     private fun onImageLoaded(url: String) {
-        pageList.forEach {
-            if (it.isContainsImageWithStatus(ImageStatus.LOADING)) {
-                it.findFirstImageWithStatus(ImageStatus.LOADING).apply {
-                    this.url = url
-                    imageStatus = ImageStatus.LOADED
-                    updateImageSubject.onNext(this)
-                    return
-                }
+        for (i: Int in 0 until imageList.size) {
+            val oldImage = imageList[i]
+            if (oldImage.imageStatus == Image.ImageStatus.LOADING) {
+                imageList[i] = imageList[i].copy(url = url, imageStatus = Image.ImageStatus.LOADED)
+                imageListSubject.onNext(imageList)
+                break
             }
         }
-    }
-
-    private fun isNeedToCreateNewPage(): Boolean {
-        return if (pageList.isEmpty())
-            true
-        else
-            pageList.last().isFull()
-
-    }
-
-    private fun createNewPage() {
-        pageList.add(Page())
-        pageListSubject.onNext(pageList)
     }
 
     fun reloadPhotos() {
         disposable.clear()
         pageList.clear()
-        for (i: Int in 0 until DEFAULT_IMAGE_TO_LOAD_COUNT) {
-            addNewPhoto()
-        }
-    }
-
-    data class Page(
-        val maxImageCount: Int = DEFAULT_COLUMN_COUNT * DEFAULT_SPAN_COUNT,
-        val imageList: ArrayList<Image> = arrayListOf()
-    ) {
-        init {
-            for (i: Int in 0 until maxImageCount) {
-                imageList.add(Image())
-            }
-        }
-
-        fun isFull(): Boolean {
-            imageList.find { it.imageStatus == ImageStatus.EMPTY }?.let {
-                return false
-            } ?: return true
-        }
-
-        fun isContainsImageWithStatus(status: ImageStatus): Boolean {
-            imageList.find { it.imageStatus == status }?.let {
-                return true
-            } ?: return false
-        }
-
-        fun getFirstEmptyImage() = imageList.firstOrNull {
-            it.imageStatus == ImageStatus.EMPTY
-        }
-
-        fun findFirstImageWithStatus(status: ImageStatus) =
-            imageList.first { it.imageStatus == status }
-
+        imageList.clear()
+        imageListSubject.onNext(imageList)
+        loadImages(DEFAULT_IMAGE_TO_LOAD_COUNT)
     }
 
     override fun onCleared() {
         super.onCleared()
         disposable.clear()
-    }
-
-    data class Image(
-        val id: String = UUID.randomUUID().toString(),
-        var url: String? = null,
-        var imageStatus: ImageStatus = ImageStatus.EMPTY
-    )
-
-    enum class ImageStatus {
-        EMPTY, LOADING, LOADED
     }
 }
 

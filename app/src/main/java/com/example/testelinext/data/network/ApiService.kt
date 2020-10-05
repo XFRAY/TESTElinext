@@ -1,4 +1,4 @@
-package com.example.testelinext.network
+package com.example.testelinext.data.network
 
 import io.reactivex.Single
 import okhttp3.ResponseBody

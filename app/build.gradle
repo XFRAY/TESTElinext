@@ -17,7 +17,6 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField "String", "API_URL", '"https://loremflickr.com/"'
-        buildConfigField "String", "USER_TOKEN", '"1122.IVYgsFSbtTTcmktanNVYtJBZoUJHayDX"'
     }
 
     buildTypes {
@@ -43,7 +42,6 @@ dependencies {
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.3.0'
 
     implementation 'androidx.recyclerview:recyclerview:1.1.0'
-    implementation "androidx.cardview:cardview:1.0.0"
 
     implementation 'com.github.bumptech.glide:glide:4.11.0'
     kapt 'com.github.bumptech.glide:compiler:4.11.0'

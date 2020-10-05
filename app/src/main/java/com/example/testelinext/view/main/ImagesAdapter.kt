@@ -10,12 +10,15 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.example.testelinext.R
+import com.example.testelinext.data.model.Image
+import com.example.testelinext.extensions.dpToPx
+import com.example.testelinext.extensions.setCornerRadius
 import kotlinx.android.synthetic.main.item_photo.view.*
 
 
-class PhotosAdapter : RecyclerView.Adapter<PhotosAdapter.PhotosHolder>() {
+class ImagesAdapter : RecyclerView.Adapter<ImagesAdapter.PhotosHolder>() {
 
-    private val items = ArrayList<MainViewModel.Image>()
+    val items = ArrayList<Image>()
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotosHolder {
         return PhotosHolder(
@@ -27,60 +30,33 @@ class PhotosAdapter : RecyclerView.Adapter<PhotosAdapter.PhotosHolder>() {
         holder.bindItem(items[position])
     }
 
-    fun updatePages(pages: List<MainViewModel.Page>) {
-        val currentItemCount = itemCount
-        val listOfAllItem = ArrayList<MainViewModel.Image>()
-        pages.forEach {
-            listOfAllItem.addAll(it.imageList)
-        }
-        val newItemsCount = listOfAllItem.size
-        if (itemCount > newItemsCount) {
-            items.clear()
-            items.addAll(listOfAllItem)
-            notifyDataSetChanged()
-            return
-        }
-        val newItems = listOfAllItem.subList(currentItemCount, newItemsCount)
-        items.addAll(newItems)
-        notifyItemRangeInserted(currentItemCount, newItems.size)
-    }
-
     override fun getItemCount(): Int {
         return items.size
     }
 
-    fun updateItem(image: MainViewModel.Image) {
-        getPhotoById(image.id).run {
-            imageStatus = image.imageStatus
-            url = image.url
-            notifyItemChanged(getItemPosition(this))
-        }
-    }
-
-    private fun getItemPosition(image: MainViewModel.Image): Int {
-        return items.indexOf(image)
-    }
-
-    private fun getPhotoById(id: String) = items.first {
-        it.id == id
+    fun setData(newList: List<Image>){
+        items.clear()
+        items.addAll(newList)
     }
 
     class PhotosHolder(view: View) : RecyclerView.ViewHolder(view) {
 
         private val imgPhoto = view.imgPhoto
+        private val imageContainer = view.imageContainer
         private val progressBar = view.progressBar
 
-        fun bindItem(image: MainViewModel.Image) {
+        fun bindItem(image: Image) {
+            imageContainer.setCornerRadius(imageContainer.dpToPx(7f))
             when (image.imageStatus) {
-                MainViewModel.ImageStatus.EMPTY -> {
+                Image.ImageStatus.EMPTY -> {
                     imgPhoto.setImageDrawable(null)
                     progressBar.visibility = View.GONE
                 }
-                MainViewModel.ImageStatus.LOADING -> {
+                Image.ImageStatus.LOADING -> {
                     imgPhoto.setImageDrawable(null)
                     progressBar.visibility = View.VISIBLE
                 }
-                MainViewModel.ImageStatus.LOADED -> {
+                Image.ImageStatus.LOADED -> {
                     Glide.with(imgPhoto.context)
                         .load(image.url)
                         .into(object : CustomTarget<Drawable>() {

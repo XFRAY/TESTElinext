@@ -1,14 +1,15 @@
 package com.example.testelinext.view.main
 
 import android.os.Bundle
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.testelinext.R
 import com.example.testelinext.view.main.custom.GridPagerSnapHelper
-import io.reactivex.disposables.CompositeDisposable
 import kotlinx.android.synthetic.main.activity_main.*
 import org.koin.androidx.viewmodel.ext.android.viewModel
 
@@ -17,19 +18,17 @@ class MainActivity : AppCompatActivity() {
 
     private val mainViewModel: MainViewModel by viewModel()
 
-    private lateinit var adapter: PhotosAdapter
-
-    private val compositeDisposable = CompositeDisposable()
+    private lateinit var imageAdapter: ImagesAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         initRecyclerView()
-        initRecyclerAdapter()
         observeData()
     }
 
     private fun initRecyclerView() {
+        imageAdapter = ImagesAdapter()
         val gridLayoutManager =
             object : GridLayoutManager(this, MainViewModel.DEFAULT_SPAN_COUNT, HORIZONTAL, false) {
                 override fun checkLayoutParams(lp: RecyclerView.LayoutParams): Boolean {
@@ -40,28 +39,21 @@ class MainActivity : AppCompatActivity() {
             }
         with(rcclPhotos) {
             setHasFixedSize(true)
-            stateListAnimator = null
             layoutManager = gridLayoutManager
             GridPagerSnapHelper(
                 MainViewModel.DEFAULT_SPAN_COUNT,
                 MainViewModel.DEFAULT_COLUMN_COUNT
             ).attachToRecyclerView(this)
+            adapter = imageAdapter
         }
     }
 
-    private fun initRecyclerAdapter() {
-        adapter = PhotosAdapter()
-        rcclPhotos.adapter = adapter
-    }
-
     private fun observeData() {
-        compositeDisposable.add(mainViewModel.pageListSubject.subscribe {
-            adapter.updatePages(it)
-        })
-
-        compositeDisposable.add(mainViewModel.updateImageSubject.subscribe {
-            adapter.updateItem(it)
-        })
+        mainViewModel.imageListSubject.subscribe {
+            val imagesDiffResult = DiffUtil.calculateDiff(ImagesDiffUtils(imageAdapter.items, it))
+            imageAdapter.setData(it)
+            imagesDiffResult.dispatchUpdatesTo(imageAdapter)
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -69,25 +61,17 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_add_photo -> {
-                mainViewModel.addNewPhoto()
-                true
-            }
-            R.id.action_update -> {
-                initRecyclerAdapter()
-                mainViewModel.reloadPhotos()
-                true
-            }
-            else -> {
-                super.onOptionsItemSelected(item)
-            }
+    override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
+        R.id.action_add_photo -> {
+            mainViewModel.loadOneImage()
+            true
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        compositeDisposable.clear()
+        R.id.action_update -> {
+            mainViewModel.reloadPhotos()
+            true
+        }
+        else -> {
+            super.onOptionsItemSelected(item)
+        }
     }
 }
